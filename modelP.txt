@@ -1,0 +1,32 @@
+
+model {
+
+# Prior distributions
+p0 ~ dunif(0,1)
+alpha0 <- logit(p0)
+alpha1 ~ dnorm(0, 0.01)
+beta0 ~ dnorm(0, 0.01)
+beta1 ~ dnorm(0, 0.01)
+beta2 ~ dnorm(0, 0.01)
+beta3 ~ dnorm(0, 0.01)
+
+for(i in 1:M){
+   # logit-linear model for detection: understory cover effect
+   logit(p[i]) <- alpha0 + alpha1 * X[i,1]
+   # log-linear model for abundance: UFC + TRBA + UFC:TRBA
+   log(lambda[i])<- beta0 + beta1*X[i,1] + beta2*X[i,2] + beta3*X[i,2]*X[i,1]
+
+   # Poisson parameter = multinomial cellprobs x expected abundance (y_ih~Poisson(pi_ih,lambda_i))
+   pi[i,1] <- p[i] * lambda[i]
+   pi[i,2] <- p[i] * (1-p[i]) * lambda[i]
+   pi[i,3] <- p[i] * (1-p[i]) * (1-p[i]) * lambda[i]
+   pi[i,4] <- p[i] * (1-p[i]) * (1-p[i]) * (1-p[i]) * lambda[i]
+
+   for(j in 1:4){
+      y[i,j] ~ dpois(pi[i,j])
+   }
+   # Generate predictions of N[i]
+   N[i] ~ dpois(lambda[i])
+}
+}
+

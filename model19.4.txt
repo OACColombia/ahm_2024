@@ -1,0 +1,27 @@
+
+model {
+# Priors
+occ.int ~ dunif(0, 1) # Occupancy intercept on prob. scale
+alpha.occ <- logit(occ.int) #probability log intercept between 0-1
+beta.occ ~ dnorm(0, 0.0001) #flat normal distribution, centered in 0 and very flat precision: tau = 1/sigmasqr
+p.int ~ dunif(0, 1) # Detection intercept on prob. scale
+alpha.p <- logit(p.int)
+beta.p ~ dnorm(0, 0.0001)
+
+# Likelihood
+for (i in 1:nSites) { # start initial loop over sites
+# True state model for the partially observed true state
+  z[i] ~ dbern(psi[i]) # True occupancy z at site i
+  logit(psi[i]) <- alpha.occ + beta.occ * humidity[i] #logistic regression occupancy~humidity
+  for (t in 1:nVisits) { # start a second loop over visits
+    # Observation model for the actual observations
+    y[i,t] ~ dbern(eff.p[i,t]) # Detection-nondetection at i and t
+    eff.p[i,t] <- z[i] * p[i,t]
+    logit(p[i,t]) <- alpha.p + beta.p * humidity[i] #logistic regresion detectability~humidity
+  }
+}
+
+# Derived quantities
+# Finite-sample inference on number occ. sites in our sample of 150
+occ.fs <- sum(z[])
+}

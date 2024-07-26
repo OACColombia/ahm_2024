@@ -121,6 +121,7 @@ polygon(c(sort(humidity), rev(humidity[order(humidity)])), c(LCL.naive[order(hum
 
 
 # Can we do better with a HM that explicitly models the measurement error ?
+#remotes::install_github("kenkellner/ASMbook")
 library(ASMbook); library(jagsUI); library(rstan); library(TMB)
 
 
@@ -133,15 +134,18 @@ library(ASMbook); library(jagsUI); library(rstan); library(TMB)
 # Load unmarked, format data into unmarked data frame and summarize
 # We add the new observation covariate 'date' in as well
 library(unmarked)
-summary( umf <- unmarkedFrameOccu(y = y,              # The observed data
-          siteCovs = data.frame(humidity = humidity), # Site covs
-		  obsCovs = list(date = date)) )              # Observational covs
+summary(umf <- unmarkedFrameOccu(y = y,              # The observed data
+                                 siteCovs = data.frame(humidity = humidity), # Site covs
+                                 obsCovs = list(date = date)) )              # Observational covs
 
+#Maximum number of observations per site == to mean number of observations per site indicates balance data
+  #we can have inbalance, but not for now
 
 # Fit model and extract estimates (not including survey date)
 # ----------------------------------------------------------
 # Detection covariates follow first tilde, then occupancy covariates
-summary(out19.3 <- occu(~humidity ~humidity, data = umf))
+  #two linear predictors, because it has two levels (detection first, occupancy second)
+summary(out19.3 <- occu(~humidity ~humidity, data = umf)) 
 out19.3@opt                             # Remember unmarked is wrapper for optim() !
 unm_est <- coef(out19.3)                # Save estimates
 
@@ -152,7 +156,8 @@ confint(out19.3, type = 'det')          # Observation model (detection model)
 	 
 # Make predictions
 state.pred <- predict(out19.3, type = 'state')        # For psi
-det.pred <- predict(out19.3, type = 'det', newdata = data.frame(humidity = humidity)) # For p
+det.pred <- predict(out19.3, type = 'det',            # For p
+                    newdata = data.frame(humidity = humidity)) #to organize by site
 p.pred <- matrix(det.pred[,1], nrow = nSites, byrow = TRUE)  # reformat
 p.LCL <- matrix(det.pred[,3], nrow = nSites, byrow = TRUE)   # reformat
 p.UCL <- matrix(det.pred[,4], nrow = nSites, byrow = TRUE)   # reformat
@@ -179,7 +184,9 @@ lines(humidity[ooo], plogis(alpha.p + beta1.p * humidity[ooo]), lwd = 3, col = '
 polygon(c(humidity[ooo], rev(humidity[ooo])), c(p.LCL[ooo,1], rev(p.UCL[ooo,1])),
   col = rgb(0,0,1, 0.1), border = NA)
 
-	 
+#Uncertainty is bigger in state, because we have 150 sites, while detection is 150*3 (repetition) points	 
+
+
 # An important estimand: realized value of the random effect z, actual presence at surveyed sites
 # -----------------------------------------------------------------------------------------------
 
@@ -227,11 +234,11 @@ confint(out19.3B, type = 'det')          # Observation model (detection model)
 # Make predictions (only show for detection model)
 # For p ~ humidity, at average value of survey date
 n.pred <- 100
-xpred1 <- seq(-1,1,,n.pred)
+xpred1 <- seq(-1,1,n.pred)
 det.pred1 <- predict(out19.3B, type = 'det', newdat = data.frame(humidity = xpred1, date = 0)) 
 
 # For p ~ survey date, at average value of humidity
-xpred2 <- seq(-1,1,,n.pred)
+xpred2 <- seq(-1,1,n.pred)
 det.pred2 <- predict(out19.3B, type = 'det', newdat = data.frame(humidity = 0, date = xpred2)) 
 
 
@@ -247,7 +254,7 @@ polygon(c(xpred1, rev(xpred1)), c(det.pred1[,3], rev(det.pred1[,4])), col = rgb(
 plot(xpred2, det.pred2[,1], xlab = 'Survey date (scaled)', ylab = 'p',
   frame = FALSE, col = 'blue', lwd = 3, main = 'Predictions of p ~ survey date\n(ignoring humidity)',
   type = 'l', ylim = c(0, 1))
-lines(seq(-1,1,,n.pred), plogis(alpha.p + beta2.p * seq(-1,1,,n.pred)), lwd = 3, col = 'red')
+lines(seq(-1,1,n.pred), plogis(alpha.p + beta2.p * seq(-1,1,n.pred)), lwd = 3, col = 'red')
 polygon(c(xpred2, rev(xpred2)), c(det.pred2[,3], rev(det.pred2[,4])), col = rgb(0,0,1, 0.1), border = NA)
 
 
@@ -258,7 +265,7 @@ polygon(c(xpred2, rev(xpred2)), c(det.pred2[,3], rev(det.pred2[,4])), col = rgb(
 # 19.4 Bayesian analysis with JAGS
 # --------------------------------
 
-# Bundle and summarize data
+# Bundle and summarize data in a list
 str(dataList <- list(y = y, humidity = humidity, date = date, nSites = nSites, nVisits = nVisits) )
 
 
@@ -270,8 +277,8 @@ cat(file = "model19.4.txt", "
 model {
 # Priors
 occ.int ~ dunif(0, 1) # Occupancy intercept on prob. scale
-alpha.occ <- logit(occ.int)
-beta.occ ~ dnorm(0, 0.0001)
+alpha.occ <- logit(occ.int) #probability log intercept between 0-1
+beta.occ ~ dnorm(0, 0.0001) #flat normal distribution, centered in 0 and very flat precision: tau = 1/sigmasqr
 p.int ~ dunif(0, 1) # Detection intercept on prob. scale
 alpha.p <- logit(p.int)
 beta.p ~ dnorm(0, 0.0001)
@@ -280,12 +287,12 @@ beta.p ~ dnorm(0, 0.0001)
 for (i in 1:nSites) { # start initial loop over sites
 # True state model for the partially observed true state
   z[i] ~ dbern(psi[i]) # True occupancy z at site i
-  logit(psi[i]) <- alpha.occ + beta.occ * humidity[i]
+  logit(psi[i]) <- alpha.occ + beta.occ * humidity[i] #logistic regression occupancy~humidity
   for (t in 1:nVisits) { # start a second loop over visits
     # Observation model for the actual observations
     y[i,t] ~ dbern(eff.p[i,t]) # Detection-nondetection at i and t
     eff.p[i,t] <- z[i] * p[i,t]
-    logit(p[i,t]) <- alpha.p + beta.p * humidity[i]
+    logit(p[i,t]) <- alpha.p + beta.p * humidity[i] #logistic regresion detectability~humidity
   }
 }
 
@@ -300,10 +307,10 @@ zst <- apply(y, 1, max) # Get *observed* presence/absence status
 inits <- function(){list(z = zst, occ.int = runif(1), beta.occ = runif(1, -3, 3),
   p.int = runif(1), beta.p = runif(1, -3, 3))}
 
-# Parameters to estimate
+# Parameters to estimate (a list)
 params <- c("alpha.occ","beta.occ", "alpha.p", "beta.p", "occ.fs", "occ.int", "p.int")
 
-# MCMC settings
+# MCMC settings - na does not count
 na <- 5000 ; ni <- 50000 ; nb <- 10000 ; nc <- 4 ; nt <- 10
 
 # Call JAGS (ART 60 sec), check convergence, summarize posteriors and save results
@@ -328,6 +335,10 @@ print(comp, 2)
 
 # Get predictions
 str(post.draws <- out19.4$sims.list) # Grab posterior draws and look
+par(mfrow = c(1, 1), mar = c(5,5,4,2), cex.lab = 1.5, cex.axis = 1.5)
+hist(out19.4$sims.list$beta.occ, breaks = 100)
+
+
 nsamp <- length(post.draws[[1]]) # Check number of posterior draws
 pred.occ <- array(NA, dim = c(length(humidity), nsamp))
 for(i in 1:length(humidity)){ # Posterior predictive distribution

@@ -1,0 +1,39 @@
+
+model {
+
+# Prior distributions
+p0 ~ dunif(0,1) #
+alpha0 <- logit(p0) #
+alpha1 ~ dnorm(0, 0.01)
+beta0 ~ dnorm(0, 0.01)
+beta1 ~ dnorm(0, 0.01)
+beta2 ~ dnorm(0, 0.01)
+beta3 ~ dnorm(0, 0.01)
+
+for(i in 1:M){ # Loop over sites
+   # Conditional multinomial cell probabilities (four removal periods of 3-5 minutes)
+   pi[i,1] <- p[i] #removed in the third period
+   pi[i,2] <- p[i]*(1-p[i]) #miss in the first, removed in the second
+   pi[i,3] <- p[i]*(1-p[i])*(1-p[i]) #miss in the first two, removed in the third
+   pi[i,4] <- p[i]*(1-p[i])*(1-p[i])*(1-p[i]) #miss in the first three, removed in the fourth
+   pi0[i] <- 1 - (pi[i,1] + pi[i,2] + pi[i,3] + pi[i,4]) #miss in all periods
+   pcap[i] <- 1 - pi0[i]
+   for(j in 1:4){
+      pic[i,j] <- pi[i,j] / pcap[i] #conditional pi probabilities
+   }
+
+   # logit-linear model for detection: understory cover effect
+   logit(p[i]) <- alpha0 + alpha1 * X[i,1] #regression model for the periods
+
+   # Model specification, three parts:
+   y[i,1:4] ~ dmulti(pic[i,1:4], n[i]) # component 1 uses the conditional #multinomial
+                                       #    cell probabilities
+   n[i] ~ dbin(pcap[i], N[i])          # component 2 is a model for the #binomial
+                                       #    observed sample size 
+   N[i] ~ dpois(lambda[i])             # component 3 is the process model (Poisson)
+
+   # log-linear model for abundance: UFC + TRBA + UFC:TRBA #model for expected pop size
+ log(lambda[i])<- beta0 + beta1*X[i,1] + beta2*X[i,2] + beta3*X[i,2]*X[i,1]
+}
+}
+

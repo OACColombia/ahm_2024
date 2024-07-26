@@ -11,7 +11,7 @@ library(spOccupancy)
 library(raster)
 
 # Simulate an occupancy dataset
-y <- matrix(NA, 50, 3)
+y <- matrix(NA, 50, 3) #50 sites, 3 visits
 psi <- plogis(0)
 p <- plogis(0)
 z <- rbinom(50, 1, psi)

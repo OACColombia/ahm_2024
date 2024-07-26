@@ -1,0 +1,27 @@
+
+model {
+  # Priors for the basic structure parameters
+  lambda ~ dunif(0, 100)   # Initial site-specific abundance
+  phi ~ dunif(0, 1)        # Apparent survival (omega in paper/unmarked)
+  gamma ~ dunif(0, 5)      # Per-capita recruitment rate
+  p ~ dunif(0, 1)          # Detection probability
+
+  # Likelihood - exactly to the model in algebra and R code when simulate
+  for(i in 1:nsites){
+    # State process: initial condition
+    N[i,1] ~ dpois(lambda)
+    # State process: transition model
+    for(t in 1:(nyears-1)){
+      # S[i,t+1] ~ dbin(phi, N[i,t])     # Survival process
+      R[i,t+1] ~ dpois(gamma)        # 'absolute' recruitment = 'constant' in unmarked
+      R[i,t+1] ~ dpois(N[i,t] * gamma) # per-capita recruitment = 'autoreg' in unmarked
+      N[i,t+1] <- S[i,t+1] + R[i,t+1]
+    }
+    # Observation process
+    for(t in 1:nyears){
+      for(j in 1:nsurveys){
+        C[i,t,j] ~ dbin(p, N[i,t])
+      }
+    }
+  }
+}
